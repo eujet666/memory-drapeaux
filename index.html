@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Memory Drapeaux Européens 4x4</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: #f0f8ff;
+    margin: 0;
+    padding: 20px;
+  }
+
+  h1 {
+    margin-bottom: 10px;
+    color: #333;
+  }
+
+  #stats {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 10px;
+    font-size: 18px;
+  }
+
+  #game {
+    display: grid;
+    grid-template-columns: repeat(4, 100px);
+    grid-gap: 10px;
+  }
+
+  .card {
+    width: 100px;
+    height: 70px;
+    background-color: #1e90ff;
+    border-radius: 8px;
+    cursor: pointer;
+    position: relative;
+    perspective: 600px;
+  }
+
+  .card-inner {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    transition: transform 0.5s;
+    transform-style: preserve-3d;
+  }
+
+  .card.flipped .card-inner {
+    transform: rotateY(180deg);
+  }
+
+  .card-front, .card-back {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    backface-visibility: hidden;
+    border-radius: 8px;
+  }
+
+  .card-front {
+    background-color: #1e90ff;
+  }
+
+  .card-back {
+    transform: rotateY(180deg);
+    background-size: cover;
+    background-position: center;
+  }
+
+  #restart {
+    margin-top: 20px;
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+    border: none;
+    border-radius: 5px;
+    background-color: #1e90ff;
+    color: white;
+  }
+
+  #top10 {
+    margin-top: 20px;
+    font-size: 16px;
+  }
+
+  #victory {
+    margin-top: 15px;
+    font-size: 20px;
+    font-weight: bold;
+    color: green;
+  }
+</style>
+</head>
+<body>
+
+<h1>Memory Drapeaux Européens 4x4</h1>
+
+<div id="stats">
+  <div id="moves">Coups : 0</div>
+  <div id="score">Points : 0</div>
+</div>
+
+<div id="game"></div>
+
+<button id="restart">Rejouer</button>
+
+<div id="victory"></div>
+
+<div id="top10">
+  <h3>Top 10 Scores :</h3>
+  <ol id="scoresList"></ol>
+</div>
+
+<script>
+const gameContainer = document.getElementById('game');
+const movesDisplay = document.getElementById('moves');
+const scoreDisplay = document.getElementById('score');
+const restartBtn = document.getElementById('restart');
+const scoresList = document.getElementById('scoresList');
+const victoryDisplay = document.getElementById('victory');
+
+const countries = [
+  {name: 'Portugal', img: 'https://flagcdn.com/w320/pt.png'},
+  {name: 'Espagne', img: 'https://flagcdn.com/w320/es.png'},
+  {name: 'Suisse', img: 'https://flagcdn.com/w320/ch.png'},
+  {name: 'Luxembourg', img: 'https://flagcdn.com/w320/lu.png'},
+  {name: 'France', img: 'https://flagcdn.com/w320/fr.png'},
+  {name: 'Allemagne', img: 'https://flagcdn.com/w320/de.png'},
+  {name: 'Belgique', img: 'https://flagcdn.com/w320/be.png'},
+  {name: 'Italie', img: 'https://flagcdn.com/w320/it.png'}
+];
+
+let cardsArray = [...countries, ...countries]; // 8 paires
+let firstCard = null;
+let secondCard = null;
+let lockBoard = false;
+let moves = 0;
+let score = 0;
+let matchedPairs = 0;
+
+// shuffleBoard pour éviter que les paires soient côte à côte
+function shuffleBoard(array) {
+  let shuffled;
+  let valid = false;
+  while (!valid) {
+    shuffled = array.sort(() => Math.random() - 0.5);
+    valid = true;
+    for (let i = 0; i < 16; i++) {
+      let right = (i % 4 !== 3) ? i + 1 : -1;
+      let down = (i < 12) ? i + 4 : -1;
+      if ((right !== -1 && shuffled[i].name === shuffled[right].name) ||
+          (down !== -1 && shuffled[i].name === shuffled[down].name)) {
+        valid = false;
+        break;
+      }
+    }
+  }
+  return shuffled;
+}
+
+function createBoard() {
+  gameContainer.innerHTML = '';
+  victoryDisplay.textContent = '';
+  const shuffled = shuffleBoard(cardsArray);
+
+  shuffled.forEach((country, index) => {
+    const card = document.createElement('div');
+    card.classList.add('card');
+    card.dataset.name = country.name;
+
+    const inner = document.createElement('div');
+    inner.classList.add('card-inner');
+
+    const front = document.createElement('div');
+    front.classList.add('card-front');
+
+    const back = document.createElement('div');
+    back.classList.add('card-back');
+    back.style.backgroundImage = `url(${country.img})`;
+
+    inner.appendChild(front);
+    inner.appendChild(back);
+    card.appendChild(inner);
+
+    card.addEventListener('click', flipCard);
+    gameContainer.appendChild(card);
+  });
+
+  moves = 0;
+  score = 0;
+  matchedPairs = 0;
+  movesDisplay.textContent = 'Coups : 0';
+  scoreDisplay.textContent = 'Points : 0';
+}
+
+function flipCard(e) {
+  if (lockBoard) return;
+  const card = e.currentTarget;
+  if (card === firstCard) return;
+
+  card.classList.add('flipped');
+
+  if (!firstCard) {
+    firstCard = card;
+    return;
+  }
+
+  secondCard = card;
+  moves++;
+  movesDisplay.textContent = `Coups : ${moves}`;
+
+  checkMatch();
+}
+
+function checkMatch() {
+  if (firstCard.dataset.name === secondCard.dataset.name) {
+    firstCard.removeEventListener('click', flipCard);
+    secondCard.removeEventListener('click', flipCard);
+    score += 10;
+    scoreDisplay.textContent = `Points : ${score}`;
+    firstCard = null;
+    secondCard = null;
+    matchedPairs++;
+    if (matchedPairs === 8) {
+      victoryDisplay.textContent = `Bravo ! Partie terminée en ${moves} coups et ${score} points.`;
+      saveScore(score);
+    }
+  } else {
+    score -= 5;
+    if (score < 0) score = 0;
+    scoreDisplay.textContent = `Points : ${score}`;
+    lockBoard = true;
+    setTimeout(() => {
+      firstCard.classList.remove('flipped');
+      secondCard.classList.remove('flipped');
+      firstCard = null;
+      secondCard = null;
+      lockBoard = false;
+    }, 1000);
+  }
+}
+
+function saveScore(points) {
+  let topScores = JSON.parse(localStorage.getItem('topScores')) || [];
+  topScores.push(points);
+  topScores.sort((a,b) => b - a);
+  if (topScores.length > 10) topScores = topScores.slice(0,10);
+  localStorage.setItem('topScores', JSON.stringify(topScores));
+  displayTopScores();
+}
+
+function displayTopScores() {
+  const topScores = JSON.parse(localStorage.getItem('topScores')) || [];
+  scoresList.innerHTML = '';
+  topScores.forEach(score => {
+    const li = document.createElement('li');
+    li.textContent = score;
+    scoresList.appendChild(li);
+  });
+}
+
+restartBtn.addEventListener('click', createBoard);
+
+createBoard();
+displayTopScores();
+</script>
+
+</body>
+</html>
